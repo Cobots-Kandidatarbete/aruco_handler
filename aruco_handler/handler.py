@@ -25,12 +25,11 @@ def main():
     rtsp_url = f"rtsp://{USERNAME}:{PASSWORD}@192.168.1.10{camera_id}/axis-media/media.amp"
     #rtsp_url = f"rtsp://{USERNAME}:{PASSWORD}@192.168.1.10{camera_id}/axis-media/media.amp"
     client = rtsp.Client(rtsp_server_uri = rtsp_url)
-    print(client)
-    
+
     aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_100)
     aruco_params = cv2.aruco.DetectorParameters_create()
-    
-    
+
+
     mtx = np.array([
             [ 1.8870806859867380e+03, 0., 1.3437304789046996e+03,],
             [ 0., 1.8871101256728850e+03, 7.5612309014810398e+02, ],
@@ -39,33 +38,33 @@ def main():
     dist = np.array([ 1.0037838130574537e-03, -9.1061781286498524e-04,
                       7.6765697181571183e-05, 2.2310695460447523e-04 ])
     xi = np.array([1.0])
-    
+
     w, h = (2688, 1512)
-    
+
     newcameramtx = np.array([[w/4, 0, w/2], [0, h/2.25, h/2], [0, 0, 1]])
     mapx, mapy = cv2.cv2.omnidir.initUndistortRectifyMap(mtx, dist, xi, None, newcameramtx,
                                                      (w,h), cv2.CV_32F, cv2.omnidir.RECTIFY_PERSPECTIVE)
-    
+
     rclpy.init()
     node = rclpy.create_node("aruco")
     publisher = node.create_publisher(TransformStamped, "/aruco", 20)
     tf_publisher = node.create_publisher(TFMessage, "/tf", 20)
-    
+
     while True:
         frame = client.read(raw=True)
         if frame is None:
             continue
-    
+
         new_frame = cv2.remap(frame, mapx, mapy, cv2.INTER_LINEAR)
         # cv2.imwrite('pre.jpg', frame)
         # cv2.imwrite('post.jpg', new_frame)
-    
-        gray_frame = cv2.cvtColor(new_frame, cv2.COLOR_BGR2GRAY)
+
+        # gray_frame = cv2.cvtColor(new_frame, cv2.COLOR_BGR2GRAY)
         corners, ids, rejected = cv2.aruco.detectMarkers(new_frame, aruco_dict, parameters=aruco_params)
         corners = np.array(corners)
-        print(corners)
-        print(ids)
-    
+        # print(corners)
+        # print(ids)
+
         image = new_frame
         if len(corners) > 0:
             # flatten the ArUco IDs list
@@ -96,45 +95,47 @@ def main():
                     cv2.putText(image, str(markerID),
                             (topLeft[0], topLeft[1] - 15), cv2.FONT_HERSHEY_SIMPLEX,
                             0.5, (0, 255, 0), 2)
-    
+
                     # compute the pose
-                    ret = cv2.aruco.estimatePoseSingleMarkers(markerCorner, 0.10, newcameramtx, dist);
+                    ret = cv2.aruco.estimatePoseSingleMarkers(markerCorner, 0.153, newcameramtx, dist);
                     (rot, trans) = (ret[0][0, 0, :], ret[1][0, 0, :])
-    
+
                     dst,jacobian = cv2.Rodrigues(rot)
                     quat = transforms3d.quaternions.mat2quat(dst)
-    
+
                     t = Transform()
                     t.translation.x = trans[0]
                     t.translation.y = trans[1]
                     t.translation.z = trans[2]
-                    
+
                     t.rotation.w = quat[0]
                     t.rotation.x = quat[1]
                     t.rotation.y = quat[2]
                     t.rotation.z = quat[3]
-    
+
                     stamped = TransformStamped()
                     stamped.header.frame_id = "ceiling_camera"
                     stamped.header.stamp = Time()
-    
+                    current_time = node.get_clock().now().seconds_nanoseconds()
+                    stamped.header.stamp.sec = current_time[0]
+                    stamped.header.stamp.nanosec = current_time[1]
+
                     stamped.child_frame_id = "aruco_" + str(markerID)
                     stamped.transform = t
-    
+
                     publisher.publish(stamped)
-                    
+
                     msgs.append(stamped)
-    
+
                     cv2.aruco.drawAxis(image, newcameramtx, dist, rot, trans, 0.15)
-    
-    
+
+
             tf_msg = TFMessage()
             tf_msg.transforms = msgs
             tf_publisher.publish(tf_msg)
-    
+
             rclpy.spin_once(node, timeout_sec=0.1)
-            cv2.imwrite('markers.jpg', image)
-    
+            # cv2.imwrite('markers.jpg', image)
+
     client.close()
     node.destroy()
-
