@@ -50,7 +50,7 @@ def main():
         if not success:
             continue
 
-        new_frame = cv2.remap(frame, mapx, mapy, cv2.INTER_LINEAR)
+        new_frame = frame # cv2.remap(frame, mapx, mapy, cv2.INTER_LINEAR)
         # cv2.imwrite('pre.jpg', frame)
         # cv2.imwrite('post.jpg', new_frame)
 
@@ -61,11 +61,22 @@ def main():
         print(ids)
 
         image = new_frame
+        msgs = []
+        stamped = TransformStamped()
+        stamped.header.frame_id = "world"
+        stamped.header.stamp = Time()
+        current_time = node.get_clock().now().seconds_nanoseconds()
+        stamped.header.stamp.sec = current_time[0]
+        stamped.header.stamp.nanosec = current_time[1]
+
+        stamped.child_frame_id = "ceiling_camera"
+        msgs.append(stamped)
+        
         if len(corners) > 0:
             # flatten the ArUco IDs list
             ids = ids.flatten()
             # loop over the detected ArUCo corners
-            msgs = []
+
             for (markerCorner, markerID) in zip(corners, ids):
                     # extract the marker corners (which are always returned in
                     # top-left, top-right, bottom-right, and bottom-left order)
@@ -125,12 +136,15 @@ def main():
                     cv2.aruco.drawAxis(image, newcameramtx, dist, rot, trans, 0.15)
 
 
-            tf_msg = TFMessage()
-            tf_msg.transforms = msgs
-            tf_publisher.publish(tf_msg)
+        tf_msg = TFMessage()
+        tf_msg.transforms = msgs
+        tf_publisher.publish(tf_msg)
 
-            rclpy.spin_once(node, timeout_sec=0.1)
-            #cv2.imwrite('markers.jpg', image)
+        rclpy.spin_once(node, timeout_sec=0.1)
+        cv2.imshow('img', image)
+        if cv2.waitKey(5) & 0xFF == 27:
+            break
 
-    client.close()
+    cap.release() 
+    cv2.destroyAllWindows()  
     node.destroy()
