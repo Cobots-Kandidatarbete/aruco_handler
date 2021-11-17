@@ -1,11 +1,10 @@
 
 # pip requirements
 # rtsp
-# opencv
+# opencv-python
 # opencv-contrib-python
 # transforms3d
 
-import rtsp
 import numpy as np
 import cv2
 import transforms3d
@@ -19,14 +18,10 @@ from builtin_interfaces.msg import Time
 from tf2_msgs.msg import TFMessage
 
 def main():
-    USERNAME = "root"
-    PASSWORD = "gpss2021"
-    camera_id = 1
-    rtsp_url = f"rtsp://{USERNAME}:{PASSWORD}@192.168.1.10{camera_id}/axis-media/media.amp"
-    #rtsp_url = f"rtsp://{USERNAME}:{PASSWORD}@192.168.1.10{camera_id}/axis-media/media.amp"
-    client = rtsp.Client(rtsp_server_uri = rtsp_url)
+    cap = cv2.VideoCapture(0)
 
-    aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_100)
+
+    aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_6X6_50)
     aruco_params = cv2.aruco.DetectorParameters_create()
 
 
@@ -42,7 +37,7 @@ def main():
     w, h = (2688, 1512)
 
     newcameramtx = np.array([[w/4, 0, w/2], [0, h/2.25, h/2], [0, 0, 1]])
-    mapx, mapy = cv2.cv2.omnidir.initUndistortRectifyMap(mtx, dist, xi, None, newcameramtx,
+    mapx, mapy = cv2.omnidir.initUndistortRectifyMap(mtx, dist, xi, None, newcameramtx,
                                                      (w,h), cv2.CV_32F, cv2.omnidir.RECTIFY_PERSPECTIVE)
 
     rclpy.init()
@@ -51,8 +46,8 @@ def main():
     tf_publisher = node.create_publisher(TFMessage, "/tf", 20)
 
     while True:
-        frame = client.read(raw=True)
-        if frame is None:
+        success, frame = cap.read()
+        if not success:
             continue
 
         new_frame = cv2.remap(frame, mapx, mapy, cv2.INTER_LINEAR)
@@ -63,7 +58,7 @@ def main():
         corners, ids, rejected = cv2.aruco.detectMarkers(new_frame, aruco_dict, parameters=aruco_params)
         corners = np.array(corners)
         # print(corners)
-        # print(ids)
+        print(ids)
 
         image = new_frame
         if len(corners) > 0:
@@ -135,7 +130,7 @@ def main():
             tf_publisher.publish(tf_msg)
 
             rclpy.spin_once(node, timeout_sec=0.1)
-            # cv2.imwrite('markers.jpg', image)
+            #cv2.imwrite('markers.jpg', image)
 
     client.close()
     node.destroy()
