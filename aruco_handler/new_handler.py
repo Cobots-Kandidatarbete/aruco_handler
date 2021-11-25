@@ -19,20 +19,49 @@ mp_drawing = mp.solutions.drawing_utils
 mp_drawing_styles = mp.solutions.drawing_styles
 mp_hands = mp.solutions.hands
 
-# c270 camera parameters
+# camera_matrix:
+#   cols: 3
+#   data: [955.9252891407828, 0, 299.2929814576621, 0, 958.9317260791769, 193.5121531452791, 0, 0, 1]
+#   rows: 3
+# camera_name: camera1
+# distortion_coefficients:
+#   cols: 5
+#   data: [0.09396209339360358, 0.6063644283226572, -0.02050973463465562, -0.01056330669804135, -4.163968515021963]
+#   rows: 1
+# distortion_model: plumb_bob
+# focal_length_meters: 0
+# image_height: 480
+# image_width: 640
+# projection_matrix:
+#   cols: 4
+#   data: [955.9252891407828, 0, 299.2929814576621, 0, 0, 958.9317260791769, 193.5121531452791, 0, 0, 0, 1, 0]
+#   rows: 3
+# rectification_matrix:
+#   cols: 3
+#   data: [1, 0, 0, 0, 1, 0, 0, 0, 1]
+#   rows: 3
+
+# old c270 camera parameters
+# calibration_matrix = np.array([
+#         [1578.135315108312, 0.0, 625.6708621029746],
+#         [0.0, 1585.223944490997, 274.1438454056999],
+#         [0.0, 0.0, 1.0]
+#     ]);
+
+# new c270 camera parameters
 calibration_matrix = np.array([
-        [1578.135315108312, 0.0, 625.6708621029746],
-        [0.0, 1585.223944490997, 274.1438454056999],
+        [955.9252891407828, 0.0, 299.2929814576621],
+        [0.0, 958.9317260791769, 193.5121531452791],
         [0.0, 0.0, 1.0]
     ]);
 
-distortion_coefficients = np.array([0.0, 0.0, 0.0, 0.0, 0.0])
-# distortion_coefficients = np.array([0.1913558390363024, 1.611580485047983, -0.0275432638538428, -0.0001706687576881858, -11.90379741245398])
+distortion_coefficients = np.array([0.0, 0.0, 0.0, 0.0])
+# distortion_coefficients = np.array([0.09396209339360358, 0.6063644283226572, -0.02050973463465562, -0.01056330669804135, -4.163968515021963])
 xi = np.array([0.0]) # what the hell is this? 
 w, h = (640, 480)
 
 rectification_matrix = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
-projection_matrix = np.array([[1578.135315108312, 0.0, 625.6708621029746, 0.0], [0.0, 1585.223944490997, 274.1438454056999, 0.0], [0.0, 0.0, 1.0, 0.0]])
+projection_matrix = np.array([[955.9252891407828, 0.0, 299.2929814576621, 0.0], [0.0, 958.9317260791769, 193.5121531452791, 0.0], [0.0, 0.0, 1.0, 0.0]])
 # projection_matrix = np.array([[1578.135315108312, 0.0, 0.0, 0.0], [0.0, 1585.223944490997, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]])
 
 class Things:
@@ -49,17 +78,17 @@ class Vision(Node):
         # new_cam_mtx, valid_roi = cv2.getOptimalNewCameraMatrix(calibration_matrix, distortion_coefficients, (w, h), 1, (w, h)) 
         self.aruco_params = cv2.aruco.DetectorParameters_create()
 
-        # mapx, mapy = cv2.omnidir.initUndistortRectifyMap(
-        #     calibration_matrix, 
-        #     distortion_coefficients, 
-        #     xi,
-        #     rectification_matrix, 
-        #     projection_matrix,
-        #     # new_cam_mtx,
-        #     (w,h), 
-        #     cv2.CV_32F, 
-        #     cv2.omnidir.RECTIFY_PERSPECTIVE
-        # )
+        self.mapx, self.mapy = cv2.omnidir.initUndistortRectifyMap(
+            calibration_matrix, 
+            distortion_coefficients, 
+            xi,
+            rectification_matrix, 
+            projection_matrix,
+            # new_cam_mtx,
+            (w,h), 
+            cv2.CV_32F, 
+            cv2.omnidir.RECTIFY_PERSPECTIVE
+        )
    
         # mapx, mapy = cv2.initUndistortRectifyMap(
         #     calibration_matrix, 
@@ -71,15 +100,15 @@ class Vision(Node):
         #     cv2.CV_32FC1
         # )
 
-        self.mapx, self.mapy = cv2.initUndistortRectifyMap(
-            calibration_matrix, 
-            distortion_coefficients, 
-            rectification_matrix,
-            calibration_matrix,
-            # new_cam_mtx,
-            (w,h),
-            cv2.CV_32FC1
-        )
+        # self.mapx, self.mapy = cv2.initUndistortRectifyMap(
+        #     calibration_matrix, 
+        #     distortion_coefficients, 
+        #     rectification_matrix,
+        #     calibration_matrix,
+        #     # new_cam_mtx,
+        #     (w,h),
+        #     cv2.CV_32FC1
+        # )
 
         self.get_logger().info("Vision Node should be started.")
 
@@ -291,7 +320,8 @@ class Vision(Node):
                                 Things.hands.append(single_hand_msg)
 
                 frame = cv2.remap(image, self.mapx, self.mapy, cv2.INTER_LINEAR)
-                corners, ids, rejected = cv2.aruco.detectMarkers(image, self.aruco_dict, parameters=self.aruco_params)
+                # corners, ids, rejected = cv2.aruco.detectMarkers(image, self.aruco_dict, parameters=self.aruco_params)
+                corners, ids, rejected = cv2.aruco.detectMarkers(frame, self.aruco_dict, parameters=self.aruco_params)
                 corners = np.array(corners)
 
                 if len(corners) > 0:
@@ -310,17 +340,23 @@ class Vision(Node):
                         bottomLeft = (int(bottomLeft[0]), int(bottomLeft[1]))
                         topLeft = (int(topLeft[0]), int(topLeft[1]))
                         # draw the bounding box of the ArUCo detection
-                        cv2.line(image, topLeft, topRight, (0, 255, 0), 2)
-                        cv2.line(image, topRight, bottomRight, (0, 255, 0), 2)
-                        cv2.line(image, bottomRight, bottomLeft, (0, 255, 0), 2)
-                        cv2.line(image, bottomLeft, topLeft, (0, 255, 0), 2)
+                        # cv2.line(image, topLeft, topRight, (0, 255, 0), 2)
+                        # cv2.line(image, topRight, bottomRight, (0, 255, 0), 2)
+                        # cv2.line(image, bottomRight, bottomLeft, (0, 255, 0), 2)
+                        # cv2.line(image, bottomLeft, topLeft, (0, 255, 0), 2)
+                        cv2.line(frame, topLeft, topRight, (0, 255, 0), 2)
+                        cv2.line(frame, topRight, bottomRight, (0, 255, 0), 2)
+                        cv2.line(frame, bottomRight, bottomLeft, (0, 255, 0), 2)
+                        cv2.line(frame, bottomLeft, topLeft, (0, 255, 0), 2)
                         # compute and draw the center (x, y)-coordinates of the ArUco
                         # marker
                         cX = int((topLeft[0] + bottomRight[0]) / 2.0)
                         cY = int((topLeft[1] + bottomRight[1]) / 2.0)
-                        cv2.circle(image, (cX, cY), 4, (0, 0, 255), -1)
+                        cv2.circle(frame, (cX, cY), 4, (0, 0, 255), -1)
+                        # cv2.circle(image, (cX, cY), 4, (0, 0, 255), -1)
                         # draw the ArUco marker ID on the image
-                        cv2.putText(image, str(markerID),
+                        # cv2.putText(image, str(markerID),
+                        cv2.putText(frame, str(markerID),
                                 (topLeft[0], topLeft[1] - 15), cv2.FONT_HERSHEY_SIMPLEX,
                                 0.5, (0, 255, 0), 2)
 
@@ -330,6 +366,8 @@ class Vision(Node):
 
                         dst,jacobian = cv2.Rodrigues(rot)
                         quat = transforms3d.quaternions.mat2quat(dst)
+
+                        # print(trans)
 
                         t = Transform()
                         t.translation.x = trans[0]
@@ -353,9 +391,11 @@ class Vision(Node):
 
                         Things.arucos.append(stamped)
 
-                        cv2.aruco.drawAxis(image, calibration_matrix, distortion_coefficients, rot, trans, 0.15)
+                        # cv2.aruco.drawAxis(image, calibration_matrix, distortion_coefficients, rot, trans, 0.15)
+                        cv2.aruco.drawAxis(frame, calibration_matrix, distortion_coefficients, rot, trans, 0.15)
 
-                cv2.imshow('img', image)
+                # cv2.imshow('img', image)
+                cv2.imshow('img', frame)
                 if cv2.waitKey(5) & 0xFF == 27:
                     break
 
