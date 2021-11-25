@@ -20,7 +20,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'aruco_handler = aruco_handler.handler:main'
+            'aruco_handler = aruco_handler.handler:main',
+            'new_handler = aruco_handler.new_handler:main'
         ],
     },
 )
