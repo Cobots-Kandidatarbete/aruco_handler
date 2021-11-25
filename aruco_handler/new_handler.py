@@ -49,9 +49,6 @@ class Vision(Node):
         # new_cam_mtx, valid_roi = cv2.getOptimalNewCameraMatrix(calibration_matrix, distortion_coefficients, (w, h), 1, (w, h)) 
         self.aruco_params = cv2.aruco.DetectorParameters_create()
 
-
-
-
         # mapx, mapy = cv2.omnidir.initUndistortRectifyMap(
         #     calibration_matrix, 
         #     distortion_coefficients, 
@@ -358,7 +355,6 @@ class Vision(Node):
 
                         cv2.aruco.drawAxis(image, calibration_matrix, distortion_coefficients, rot, trans, 0.15)
 
-                    # rclpy.spin_once(node, timeout_sec=0.1)
                 cv2.imshow('img', image)
                 if cv2.waitKey(5) & 0xFF == 27:
                     break
@@ -374,24 +370,13 @@ class VisionHandler(Node):
     def __init__(self):
         super().__init__("vision_handler")
 
-        self.tf_publisher = self.create_publisher(TransformStamped, "/aruco", 20)
+        self.tf_publisher = self.create_publisher(TFMessage, "/tf", 20)
         self.hands_publisher_ = self.create_publisher(Hands, "/hands", 20)
         self.timer = self.create_timer(0.1, self.hands_timer_callback)
 
         self.get_logger().info("Vision Handler Node should be started.")
 
-    #     self.run_asdf()
-
-    # def run_asdf(self):
-    #     while True:
-    #         print("TEST")
-    #         hands_msg = Hands()
-    #         hands_msg.hands = Things.hands
-    #         self.hands_publisher_.publish(hands_msg)
-    #         time.sleep(0.1)
-
     def hands_timer_callback(self):
-        # print("TEST")
         hands_msg = Hands()
         hands_msg.hands = Things.hands
         self.hands_publisher_.publish(hands_msg)
@@ -400,9 +385,10 @@ class VisionHandler(Node):
 
         for t in Things.arucos:
             msgs.append(t)
-            tf_msg = TFMessage()
-            tf_msg.transforms = msgs
-            self.tf_publisher.publish(tf_msg)
+            
+        tf_msg = TFMessage()
+        tf_msg.transforms = msgs
+        self.tf_publisher.publish(tf_msg)
 
         Things.arucos = []
 
