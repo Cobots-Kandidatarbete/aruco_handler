@@ -73,7 +73,7 @@ class Vision(Node):
         super().__init__("vision")
 
         cv2.ShowUndistortedImage = True
-        self.capture = cv2.VideoCapture(0)
+        self.capture = cv2.VideoCapture(1)
         self.aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_6X6_50)
         # new_cam_mtx, valid_roi = cv2.getOptimalNewCameraMatrix(calibration_matrix, distortion_coefficients, (w, h), 1, (w, h)) 
         self.aruco_params = cv2.aruco.DetectorParameters_create()
