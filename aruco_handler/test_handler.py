@@ -12,9 +12,8 @@ from builtin_interfaces.msg import Time
 from tf2_msgs.msg import TFMessage
 
 
-# test2
 aruco_stamps = []
-#test3
+
 
 def tup_to_int(tup):
     x, y = tup
