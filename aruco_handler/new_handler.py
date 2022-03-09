@@ -26,7 +26,7 @@ class StampContainer:
 
 
 class ArUcoTracker(Node):
-    def __init__(self, camera_index=2, marker_size=0.05):
+    def __init__(self, camera_index=6, marker_size=0.05):
         super().__init__(node_name="aruco_tracker")
 
         aruco_dict=cv2.aruco.DICT_6X6_50
