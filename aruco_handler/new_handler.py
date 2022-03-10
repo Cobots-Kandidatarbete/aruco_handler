@@ -1,8 +1,9 @@
-from cv2 import circle
 import numpy as np
 import threading
 import cv2
 import transforms3d
+
+import os
 
 import rclpy
 from rclpy.node import Node
@@ -36,35 +37,41 @@ class ArUcoTracker(Node):
         self.aruco_dict = cv2.aruco.Dictionary_get(aruco_dict)
         self.aruco_params = cv2.aruco.DetectorParameters_create()
 
-        # Calibration
-        # https://automaticaddison.com/how-to-perform-pose-estimation-using-an-aruco-marker/
 
-        # https://docs.opencv.org/3.4/d3/ddc/group__ccalib.html#ga5825788141f468e6fbcd501d5115df15
-        self.camera_matrix = np.array([
-            [955.9252891407828, 0, 299.2929814576621],
-            [0, 958.9317260791769, 193.5121531452791],
-            [0, 0, 1]
-        ])
+        cam_name = "realsense_d435"
+        path_to_calibration_dir = f"./src/lab/src/camera-calibration/{cam_name}_configs"
+        if not os.path.isdir(path_to_calibration_dir):
+            raise ImportError(f"Could not find dir {path_to_calibration_dir}")
 
-        self.distortion_coeffecients = np.array([0, 0, 0, 0], dtype='float')
-        xi = np.array([0.0])
-        size = (640, 480)
+        path_to_calibration_file = f"{path_to_calibration_dir}/{cam_name}_config.yaml"
+        if not os.path.isfile(path_to_calibration_file):
+            raise ImportError(f"Could not find file {path_to_calibration_file}")
+
+
+        try:
+            calibration_file = cv2.FileStorage(path_to_calibration_file, cv2.FILE_STORAGE_READ)
+            self.camera_matrix = calibration_file.getNode('camera_matrix').mat()
+            self.distortion_coeffecients = calibration_file.getNode('distortion_matrix').mat()
+            self.optimal_camera_matrix = calibration_file.getNode('optimal_camera_matrix').mat()
+            img_size = calibration_file.getNode('image_size').mat()
+            self.image_size = int(img_size[0]), int(img_size[1])
+        finally:
+            calibration_file.release()
+        
+
         rectification_matrix = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype='float')
-        projection_matrix = self.camera_matrix.copy()
-        np.append(projection_matrix, np.zeros((2, 1), dtype=float))
         map_1_type = cv2.CV_32F
-        flags = cv2.omnidir.RECTIFY_PERSPECTIVE
 
-        self.mapx, self.mapy = cv2.omnidir.initUndistortRectifyMap(
+
+        self.map_x, self.map_y = cv2.initUndistortRectifyMap(
             self.camera_matrix,
             self.distortion_coeffecients,
-            xi,
             rectification_matrix,
-            projection_matrix,
-            size,
-            map_1_type,
-            flags
+            self.camera_matrix,
+            self.image_size,
+            map_1_type
         )
+
 
         self.get_logger().info("aruco_tracker node should be started")
         t1 = threading.Thread(target=self.run_vision_callback)
@@ -88,7 +95,7 @@ class ArUcoTracker(Node):
                 print("Ignoring empty camera frame.")
                 continue
 
-            frame = cv2.remap(frame, self.mapx, self.mapy, cv2.INTER_LINEAR)
+            frame = cv2.remap(frame, self.map_x, self.map_y, cv2.INTER_LINEAR)
             corners, ids, _ = cv2.aruco.detectMarkers(frame, self.aruco_dict, parameters=self.aruco_params)
             corners = np.array(corners)
 
