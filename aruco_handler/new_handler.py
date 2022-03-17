@@ -57,7 +57,11 @@ class CameraConfig:
     def load_calibration_file(cls):
         path_to_calibrator_dir = f"{os.path.curdir}/src/camera-calibrator/{cls.camera_name}_configs"
         if not os.path.isdir(path_to_calibrator_dir):
-            raise ImportError(f"Could not find dir {path_to_calibrator_dir}")
+            second_path = f"{os.path.pardir}/camera-calibrator/{cls.camera_name}_configs"
+            if os.path.isdir(second_path):
+                path_to_calibrator_dir = second_path
+            else:
+                raise ImportError(f"Could not find dir {path_to_calibrator_dir} or {second_path}")
 
         path_to_calibration_file = f"{path_to_calibrator_dir}/{cls.camera_name}_config.yaml"
         if not os.path.isfile(path_to_calibration_file):
