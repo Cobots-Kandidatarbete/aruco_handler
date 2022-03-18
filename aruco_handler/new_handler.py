@@ -1,4 +1,5 @@
 import numpy as np
+import pyrealsense2 as rs
 import threading
 import cv2
 import transforms3d
@@ -50,8 +51,13 @@ class CameraConfig:
     image_size = None
     rectification_matrix = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype='float')
     map_1_type = cv2.CV_32F
-
     map_x, map_y = None, None
+
+    pipeline = None
+    align = None
+    depth_format = rs.format.z16
+    color_format = rs.format.bgr8
+    
 
     @classmethod
     def load_calibration_file(cls):
@@ -81,7 +87,7 @@ class CameraConfig:
     def calibrate_camera(cls):
         cls.load_calibration_file()
         
-        cls.capture = cv2.VideoCapture(cls.camera_index)
+        #cls.capture = cv2.VideoCapture(cls.camera_index)
         cls.aruco_dict = cv2.aruco.Dictionary_get(cls.aruco_dict_key)
         cls.aruco_params = cv2.aruco.DetectorParameters_create()
 
@@ -96,6 +102,23 @@ class CameraConfig:
         
         cv2.ShowUndistortedImage = True
 
+        cls.pipeline = rs.pipeline()
+        cls.config = rs.config()
+
+        h, w = cls.image_size
+
+        pipeline_wrapper = rs.pipeline_wrapper(cls.pipeline)
+        pipeline_profile = cls.config.resolve(pipeline_wrapper)
+        device = pipeline_profile.get_device()
+        device_product_line = str(device.get_info(rs.camera_info.product_line))
+
+        cls.config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+        cls.config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+
+        cls.pipeline.start(cls.config)
+
+        align_to = rs.stream.color
+        cls.align = rs.align(align_to)
 
 class ArUcoTracker(Node):
     def __init__(self):
@@ -111,31 +134,59 @@ class ArUcoTracker(Node):
     def run_vision_callback(self):
         while True:
             
-            capture_success, frame = CameraConfig.capture.read()
-            if not capture_success:
-                print("Ignoring empty camera frame.")
-                continue
+            frames = CameraConfig.pipeline.wait_for_frames()
 
-            frame = cv2.remap(frame, CameraConfig.map_x, CameraConfig.map_y, cv2.INTER_LINEAR)
-            corners, ids, _ = cv2.aruco.detectMarkers(frame, CameraConfig.aruco_dict, parameters=CameraConfig.aruco_params)
+            #capture_success, frame = CameraConfig.capture.read()
+            #if not capture_success:
+            #    print("Ignoring empty camera frame.")
+            #    continue
+
+            aligned_frames = CameraConfig.align.process(frames)
+
+            depth_frame = aligned_frames.get_depth_frame()
+            color_frame = aligned_frames.get_color_frame()
+            
+            if not depth_frame or not color_frame:
+                print("Ignoring empty frame")
+                continue
+            
+            depth_frame_arr = cv2.remap(np.asanyarray(depth_frame.get_data()), CameraConfig.map_x, CameraConfig.map_y, cv2.INTER_LINEAR)
+            color_frame_arr = np.asanyarray(color_frame.get_data())
+            #color_frame_arr = cv2.remap(color_frame_arr, CameraConfig.map_x, CameraConfig.map_y, cv2.INTER_LINEAR)
+            
+
+            #print(point_3d)
+
+            corners, ids, _ = cv2.aruco.detectMarkers(color_frame_arr, CameraConfig.aruco_dict, parameters=CameraConfig.aruco_params)
 
             if corners:
                 corners = np.array(corners)
                 ids = ids.flatten()
 
                 for marker_corner, marker_id in zip(corners, ids):
+                    corner = marker_corner[0]
+                    center_px = (corner[0] - corner[2] / 2).astype(int)
+                    cv2.circle(color_frame_arr, center_px, 13, (0, 255, 0)) 
+
+                    #depth = depth_frame_arr[pt[1], pt[0]]
+                    intrinsics = depth_frame.get_profile().as_video_stream_profile().get_intrinsics()
+                    #cv2.circle(color_frame_arr, pt, 3, (0, 0, 255))
+
+                    #point_3d = rs.rs2_deproject_pixel_to_point(intrinsics, pt, depth)
+
                     rotation, translation, transform = self.get_pose_vectors(marker_corner)
+                    improved_transform = self.improve_transform(rotation, translation, intrinsics)
                     self.buffer_marker(marker_id, transform)
+                    self.draw_marker_info(color_frame_arr, marker_corner, marker_id, rotation, translation)
 
-                    self.draw_marker_info(frame, marker_corner, marker_id, rotation, translation)
-
-
-            cv2.imshow('img', frame)
+            cv2.imshow('color frame', color_frame_arr)
             if cv2.waitKey(5) & 0xFF == 27:
                 break
 
-        CameraConfig.capture.release()
+        #CameraConfig.capture.release()
         cv2.destroyAllWindows()
+
+    def improve_transform(self, rotation, translation, intrinsics)
 
     def buffer_marker(self, marker_id, transform):
         transform_stamped = self.create_transform_stamp(marker_id, transform)
@@ -146,11 +197,13 @@ class ArUcoTracker(Node):
         pose_estimation = cv2.aruco.estimatePoseSingleMarkers(marker_corner, 
         CameraConfig.marker_size, CameraConfig.camera_matrix, CameraConfig.distortion_coeffecients)
                     
-        rotation = pose_estimation[0][0, 0, :]
+        rotation_vec, translation_vec, _ = pose_estimation 
+
+        rotation = rotation_vec[0, 0, :]
         rotation_matrix, _ = cv2.Rodrigues(rotation)
         rotation_quaternion = transforms3d.quaternions.mat2quat(rotation_matrix)
 
-        translation = pose_estimation[1][0, 0, :]
+        translation = translation_vec[0, 0, :]
 
         transform = self.get_pose_transform(rotation_quaternion, translation)
         return rotation,translation,transform
@@ -173,7 +226,6 @@ class ArUcoTracker(Node):
         transform = Transform()
         transform.translation.x, transform.translation.y, transform.translation.z = translation
         transform.rotation.w, transform.rotation.x, transform.rotation.y, transform.rotation.z = rotation_quaternion
-        print(transform)
         return transform
 
     def draw_marker_info(self, frame, marker_corner, marker_id, rotation, translation):
