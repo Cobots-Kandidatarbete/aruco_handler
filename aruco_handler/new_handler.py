@@ -173,6 +173,7 @@ class ArUcoTracker(Node):
         transform = Transform()
         transform.translation.x, transform.translation.y, transform.translation.z = translation
         transform.rotation.w, transform.rotation.x, transform.rotation.y, transform.rotation.z = rotation_quaternion
+        print(transform)
         return transform
 
     def draw_marker_info(self, frame, marker_corner, marker_id, rotation, translation):
