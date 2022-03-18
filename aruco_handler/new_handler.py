@@ -1,3 +1,4 @@
+from cv2 import transform
 import numpy as np
 import pyrealsense2 as rs
 import threading
@@ -57,6 +58,8 @@ class CameraConfig:
     align = None
     depth_format = rs.format.z16
     color_format = rs.format.bgr8
+
+    depth_scale = None
     
 
     @classmethod
@@ -115,10 +118,14 @@ class CameraConfig:
         cls.config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
         cls.config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
 
-        cls.pipeline.start(cls.config)
+        profile = cls.pipeline.start(cls.config)
 
         align_to = rs.stream.color
         cls.align = rs.align(align_to)
+
+        sensor = profile.get_device().first_depth_sensor()        
+        cls.depth_scale = sensor.get_depth_scale()
+
 
 class ArUcoTracker(Node):
     def __init__(self):
@@ -133,14 +140,9 @@ class ArUcoTracker(Node):
 
     def run_vision_callback(self):
         while True:
-            
             frames = CameraConfig.pipeline.wait_for_frames()
 
-            #capture_success, frame = CameraConfig.capture.read()
-            #if not capture_success:
-            #    print("Ignoring empty camera frame.")
-            #    continue
-
+            aligned_frames = CameraConfig.align.process(frames)
             aligned_frames = CameraConfig.align.process(frames)
 
             depth_frame = aligned_frames.get_depth_frame()
@@ -152,41 +154,39 @@ class ArUcoTracker(Node):
             
             depth_frame_arr = cv2.remap(np.asanyarray(depth_frame.get_data()), CameraConfig.map_x, CameraConfig.map_y, cv2.INTER_LINEAR)
             color_frame_arr = np.asanyarray(color_frame.get_data())
-            #color_frame_arr = cv2.remap(color_frame_arr, CameraConfig.map_x, CameraConfig.map_y, cv2.INTER_LINEAR)
-            
-
-            #print(point_3d)
 
             corners, ids, _ = cv2.aruco.detectMarkers(color_frame_arr, CameraConfig.aruco_dict, parameters=CameraConfig.aruco_params)
-
             if corners:
                 corners = np.array(corners)
                 ids = ids.flatten()
 
                 for marker_corner, marker_id in zip(corners, ids):
-                    corner = marker_corner[0]
-                    center_px = (corner[0] - corner[2] / 2).astype(int)
-                    cv2.circle(color_frame_arr, center_px, 13, (0, 255, 0)) 
-
-                    #depth = depth_frame_arr[pt[1], pt[0]]
                     intrinsics = depth_frame.get_profile().as_video_stream_profile().get_intrinsics()
-                    #cv2.circle(color_frame_arr, pt, 3, (0, 0, 255))
-
-                    #point_3d = rs.rs2_deproject_pixel_to_point(intrinsics, pt, depth)
-
-                    rotation, translation, transform = self.get_pose_vectors(marker_corner)
-                    improved_transform = self.improve_transform(rotation, translation, intrinsics)
-                    self.buffer_marker(marker_id, transform)
+                    rotation, translation = self.get_pose_vectors(marker_corner)
+                    translation = self.improve_translation(color_frame_arr, depth_frame_arr, translation, intrinsics)
                     self.draw_marker_info(color_frame_arr, marker_corner, marker_id, rotation, translation)
+
+                    cv2.aruco.drawAxis(color_frame_arr, CameraConfig.camera_matrix, CameraConfig.distortion_coeffecients, rotation, translation, DrawConfig.axis_length)
+                    transform = self.get_transform(rotation, translation)
+                    self.buffer_marker(marker_id, transform)
 
             cv2.imshow('color frame', color_frame_arr)
             if cv2.waitKey(5) & 0xFF == 27:
                 break
 
-        #CameraConfig.capture.release()
         cv2.destroyAllWindows()
 
-    def improve_transform(self, rotation, translation, intrinsics)
+    def improve_translation(self, color_frame, depth_frame, translation, intrinsics):
+        raw_px = rs.rs2_project_point_to_pixel(intrinsics, translation)
+        px = np.array(raw_px, dtype=int)
+        cv2.circle(color_frame, px, 5, (130, 0, 130))
+
+        depth = depth_frame[px[1], px[0]]
+        point_3d = rs.rs2_deproject_pixel_to_point(intrinsics, raw_px, depth)
+        point_3d_arr = np.array(point_3d) * CameraConfig.depth_scale
+
+        return point_3d_arr
+                
 
     def buffer_marker(self, marker_id, transform):
         transform_stamped = self.create_transform_stamp(marker_id, transform)
@@ -200,13 +200,9 @@ class ArUcoTracker(Node):
         rotation_vec, translation_vec, _ = pose_estimation 
 
         rotation = rotation_vec[0, 0, :]
-        rotation_matrix, _ = cv2.Rodrigues(rotation)
-        rotation_quaternion = transforms3d.quaternions.mat2quat(rotation_matrix)
-
         translation = translation_vec[0, 0, :]
 
-        transform = self.get_pose_transform(rotation_quaternion, translation)
-        return rotation,translation,transform
+        return rotation, translation
 
     def create_transform_stamp(self, marker_id, transform):
         transform_stamped = TransformStamped()
@@ -222,9 +218,11 @@ class ArUcoTracker(Node):
         transform_stamped.transform = transform
         return transform_stamped
 
-    def get_pose_transform(self, rotation_quaternion, translation):
+    def get_transform(self, rotation, translation):
         transform = Transform()
         transform.translation.x, transform.translation.y, transform.translation.z = translation
+        rotation_matrix, _ = cv2.Rodrigues(rotation)
+        rotation_quaternion = transforms3d.quaternions.mat2quat(rotation_matrix)
         transform.rotation.w, transform.rotation.x, transform.rotation.y, transform.rotation.z = rotation_quaternion
         return transform
 
@@ -240,7 +238,6 @@ class ArUcoTracker(Node):
         cv2.circle(frame, center, DrawConfig.circle_radius, DrawConfig.circle_color, -1)
 
         cv2.putText(frame, str(marker_id), (top_left[0], top_right[1] - 15), DrawConfig.font, DrawConfig.font_scale, DrawConfig.font_color, DrawConfig.font_thickness)
-        cv2.aruco.drawAxis(frame, CameraConfig.camera_matrix, CameraConfig.distortion_coeffecients, rotation, translation, DrawConfig.axis_length)
 
 
 class ArUcoPublisher(Node):
