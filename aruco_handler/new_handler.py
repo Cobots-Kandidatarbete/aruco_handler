@@ -41,10 +41,9 @@ class CameraConfig:
     aruco_dict = None
     aruco_params = None
 
-    marker_size = 0.05
+    marker_size = 0.096
     camera_name = "realsense_d435"
     camera_index = 6
-    marker_size = 0.05
 
     camera_matrix = None
     distortion_coeffecients = None
@@ -206,7 +205,8 @@ class ArUcoTracker(Node):
 
     def create_transform_stamp(self, marker_id, transform):
         transform_stamped = TransformStamped()
-        transform_stamped.header.frame_id = CameraConfig.camera_name
+        #transform_stamped.header.frame_id = CameraConfig.camera_name
+        transform_stamped.header.frame_id = CameraConfig.camera_name + "_rgb"
         transform_stamped.header.stamp = Time()
                     
         current_time = self.get_clock().now().seconds_nanoseconds()
