@@ -14,6 +14,7 @@ from geometry_msgs.msg import Transform, TransformStamped
 from builtin_interfaces.msg import Time
 from tf2_msgs.msg import TFMessage
 
+
 class StampContainer:
     aruco_stamps = []
 
@@ -41,7 +42,7 @@ class CameraConfig:
     aruco_dict = None
     aruco_params = None
 
-    marker_size = 0.096
+    marker_size = 0.05
     camera_name = "realsense_d435"
     camera_index = 6
 
@@ -49,7 +50,8 @@ class CameraConfig:
     distortion_coeffecients = None
     optimal_camera_matrix = None
     image_size = None
-    rectification_matrix = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype='float')
+    rectification_matrix = np.array(
+        [[1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype='float')
     map_1_type = cv2.CV_32F
     map_x, map_y = None, None
 
@@ -59,7 +61,6 @@ class CameraConfig:
     color_format = rs.format.bgr8
 
     depth_scale = None
-    
 
     @classmethod
     def load_calibration_file(cls):
@@ -69,18 +70,24 @@ class CameraConfig:
             if os.path.isdir(second_path):
                 path_to_calibrator_dir = second_path
             else:
-                raise ImportError(f"Could not find dir {path_to_calibrator_dir} or {second_path}")
+                raise ImportError(
+                    f"Could not find dir {path_to_calibrator_dir} or {second_path}")
 
         path_to_calibration_file = f"{path_to_calibrator_dir}/{cls.camera_name}_config.yaml"
         if not os.path.isfile(path_to_calibration_file):
-            raise ImportError(f"Could not find file {path_to_calibration_file}")
+            raise ImportError(
+                f"Could not find file {path_to_calibration_file}")
 
         try:
-            calibration_file = cv2.FileStorage(path_to_calibration_file, cv2.FILE_STORAGE_READ)
+            calibration_file = cv2.FileStorage(
+                path_to_calibration_file, cv2.FILE_STORAGE_READ)
             cls.camera_matrix = calibration_file.getNode('camera_matrix').mat()
-            cls.distortion_coeffecients = calibration_file.getNode('distortion_matrix').mat()
-            cls.optimal_camera_matrix = calibration_file.getNode('optimal_camera_matrix').mat()
-            cls.image_size = calibration_file.getNode('image_size').mat().astype(int).flatten()
+            cls.distortion_coeffecients = calibration_file.getNode(
+                'distortion_matrix').mat()
+            cls.optimal_camera_matrix = calibration_file.getNode(
+                'optimal_camera_matrix').mat()
+            cls.image_size = calibration_file.getNode(
+                'image_size').mat().astype(int).flatten()
 
         finally:
             calibration_file.release()
@@ -88,7 +95,7 @@ class CameraConfig:
     @classmethod
     def calibrate_camera(cls):
         cls.load_calibration_file()
-        
+
         #cls.capture = cv2.VideoCapture(cls.camera_index)
         cls.aruco_dict = cv2.aruco.Dictionary_get(cls.aruco_dict_key)
         cls.aruco_params = cv2.aruco.DetectorParameters_create()
@@ -101,7 +108,7 @@ class CameraConfig:
             cls.image_size,
             cls.map_1_type
         )
-        
+
         cv2.ShowUndistortedImage = True
 
         cls.pipeline = rs.pipeline()
@@ -122,7 +129,7 @@ class CameraConfig:
         align_to = rs.stream.color
         cls.align = rs.align(align_to)
 
-        sensor = profile.get_device().first_depth_sensor()        
+        sensor = profile.get_device().first_depth_sensor()
         cls.depth_scale = sensor.get_depth_scale()
 
 
@@ -146,26 +153,32 @@ class ArUcoTracker(Node):
 
             depth_frame = aligned_frames.get_depth_frame()
             color_frame = aligned_frames.get_color_frame()
-            
+
             if not depth_frame or not color_frame:
                 print("Ignoring empty frame")
                 continue
-            
-            depth_frame_arr = cv2.remap(np.asanyarray(depth_frame.get_data()), CameraConfig.map_x, CameraConfig.map_y, cv2.INTER_LINEAR)
+
+            depth_frame_arr = cv2.remap(np.asanyarray(depth_frame.get_data(
+            )), CameraConfig.map_x, CameraConfig.map_y, cv2.INTER_LINEAR)
             color_frame_arr = np.asanyarray(color_frame.get_data())
 
-            corners, ids, _ = cv2.aruco.detectMarkers(color_frame_arr, CameraConfig.aruco_dict, parameters=CameraConfig.aruco_params)
+            corners, ids, _ = cv2.aruco.detectMarkers(
+                color_frame_arr, CameraConfig.aruco_dict, parameters=CameraConfig.aruco_params)
             if corners:
                 corners = np.array(corners)
                 ids = ids.flatten()
 
                 for marker_corner, marker_id in zip(corners, ids):
                     intrinsics = depth_frame.get_profile().as_video_stream_profile().get_intrinsics()
-                    rotation, translation = self.get_pose_vectors(marker_corner)
-                    translation = self.improve_translation(color_frame_arr, depth_frame_arr, translation, intrinsics)
-                    self.draw_marker_info(color_frame_arr, marker_corner, marker_id, rotation, translation)
+                    rotation, translation = self.get_pose_vectors(
+                        marker_corner)
+                    translation = self.improve_translation(
+                        color_frame_arr, depth_frame_arr, translation, intrinsics)
+                    self.draw_marker_info(
+                        color_frame_arr, marker_corner, marker_id, rotation, translation)
 
-                    cv2.aruco.drawAxis(color_frame_arr, CameraConfig.camera_matrix, CameraConfig.distortion_coeffecients, rotation, translation, DrawConfig.axis_length)
+                    cv2.aruco.drawAxis(color_frame_arr, CameraConfig.camera_matrix,
+                                       CameraConfig.distortion_coeffecients, rotation, translation, DrawConfig.axis_length)
                     transform = self.get_transform(rotation, translation)
                     self.buffer_marker(marker_id, transform)
 
@@ -185,7 +198,6 @@ class ArUcoTracker(Node):
         point_3d_arr = np.array(point_3d) * CameraConfig.depth_scale
 
         return point_3d_arr
-                
 
     def buffer_marker(self, marker_id, transform):
         transform_stamped = self.create_transform_stamp(marker_id, transform)
@@ -193,10 +205,10 @@ class ArUcoTracker(Node):
 
     def get_pose_vectors(self, marker_corner):
         # http://amroamroamro.github.io/mexopencv/matlab/cv.estimatePoseSingleMarkers.html
-        pose_estimation = cv2.aruco.estimatePoseSingleMarkers(marker_corner, 
-        CameraConfig.marker_size, CameraConfig.camera_matrix, CameraConfig.distortion_coeffecients)
-                    
-        rotation_vec, translation_vec, _ = pose_estimation 
+        pose_estimation = cv2.aruco.estimatePoseSingleMarkers(marker_corner,
+                                                              CameraConfig.marker_size, CameraConfig.camera_matrix, CameraConfig.distortion_coeffecients)
+
+        rotation_vec, translation_vec, _ = pose_estimation
 
         rotation = rotation_vec[0, 0, :]
         translation = translation_vec[0, 0, :]
@@ -208,9 +220,9 @@ class ArUcoTracker(Node):
         #transform_stamped.header.frame_id = CameraConfig.camera_name
         transform_stamped.header.frame_id = CameraConfig.camera_name + "_rgb"
         transform_stamped.header.stamp = Time()
-                    
+
         current_time = self.get_clock().now().seconds_nanoseconds()
-                    
+
         transform_stamped.header.stamp.sec = current_time[0]
         transform_stamped.header.stamp.nanosec = current_time[1]
 
@@ -222,22 +234,31 @@ class ArUcoTracker(Node):
         transform = Transform()
         transform.translation.x, transform.translation.y, transform.translation.z = translation
         rotation_matrix, _ = cv2.Rodrigues(rotation)
-        rotation_quaternion = transforms3d.quaternions.mat2quat(rotation_matrix)
+        rotation_quaternion = transforms3d.quaternions.mat2quat(
+            rotation_matrix)
         transform.rotation.w, transform.rotation.x, transform.rotation.y, transform.rotation.z = rotation_quaternion
         return transform
 
     def draw_marker_info(self, frame, marker_corner, marker_id, rotation, translation):
-        top_left, top_right, bot_right, bot_left = marker_corner.reshape((4, 2)).astype(int)
+        top_left, top_right, bot_right, bot_left = marker_corner.reshape(
+            (4, 2)).astype(int)
 
-        cv2.line(frame, top_left, top_right, DrawConfig.box_color, DrawConfig.box_thickness)
-        cv2.line(frame, top_right, bot_right, DrawConfig.box_color, DrawConfig.box_thickness)
-        cv2.line(frame, bot_right, bot_left, DrawConfig.box_color, DrawConfig.box_thickness)
-        cv2.line(frame, bot_left, top_left, DrawConfig.box_color, DrawConfig.box_thickness)
+        cv2.line(frame, top_left, top_right,
+                 DrawConfig.box_color, DrawConfig.box_thickness)
+        cv2.line(frame, top_right, bot_right,
+                 DrawConfig.box_color, DrawConfig.box_thickness)
+        cv2.line(frame, bot_right, bot_left,
+                 DrawConfig.box_color, DrawConfig.box_thickness)
+        cv2.line(frame, bot_left, top_left,
+                 DrawConfig.box_color, DrawConfig.box_thickness)
 
-        center = (top_left[0] + bot_right[0]) // 2, (top_left[1] + bot_right[1]) // 2
-        cv2.circle(frame, center, DrawConfig.circle_radius, DrawConfig.circle_color, -1)
+        center = (top_left[0] + bot_right[0]
+                  ) // 2, (top_left[1] + bot_right[1]) // 2
+        cv2.circle(frame, center, DrawConfig.circle_radius,
+                   DrawConfig.circle_color, -1)
 
-        cv2.putText(frame, str(marker_id), (top_left[0], top_right[1] - 15), DrawConfig.font, DrawConfig.font_scale, DrawConfig.font_color, DrawConfig.font_thickness)
+        cv2.putText(frame, str(marker_id), (top_left[0], top_right[1] - 15), DrawConfig.font,
+                    DrawConfig.font_scale, DrawConfig.font_color, DrawConfig.font_thickness)
 
 
 class ArUcoPublisher(Node):
@@ -245,14 +266,15 @@ class ArUcoPublisher(Node):
         super().__init__("aruco_publisher")
 
         history_depth = 20
-        self.tf_publisher = self.create_publisher(TFMessage, "/tf", history_depth)
+        self.tf_publisher = self.create_publisher(
+            TFMessage, "/tf", history_depth)
         self.timer = self.create_timer(0.1, self.timer_callback)
 
         self.get_logger().info("aruco_tracker should be started.")
 
     def timer_callback(self):
         messages = [a for a in StampContainer.aruco_stamps]
-        
+
         tf_message = TFMessage()
         tf_message.transforms = messages
 
@@ -266,7 +288,7 @@ def main(args=None):
     try:
         c1 = ArUcoTracker()
         c2 = ArUcoPublisher()
-        
+
         executor = MultiThreadedExecutor()
         executor.add_node(c1)
         executor.add_node(c2)
@@ -276,7 +298,7 @@ def main(args=None):
         finally:
             executor.shutdown()
             c1.destroy_node()
-            c2.destroy_node()            
+            c2.destroy_node()
 
     finally:
         rclpy.shutdown()

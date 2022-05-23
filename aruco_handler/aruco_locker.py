@@ -12,11 +12,13 @@ class Triggers:
     trigger_locking = False
     call_done = False
 
+
 class ServiceNode(Node):
     def __init__(self):
         super().__init__("aruco_locker_service_node")
 
-        self.srv = self.create_service(Trigger, 'lock_arucos', self.srv_callback)
+        self.srv = self.create_service(
+            Trigger, 'lock_arucos', self.srv_callback)
 
         self.get_logger().info(f"aruco_locker service node should be running")
 
@@ -30,6 +32,8 @@ class ServiceNode(Node):
 # frame, and then ask the scene manipulation service to update the state in the
 # broadcaster by adding a static 'locked' frame of the marker so that the robot
 # can move again without the marker moving with it. So save the locked in world.
+
+
 class ArucoLocker(Node):
     def __init__(self):
         super().__init__("aruco_locker")
@@ -40,7 +44,8 @@ class ArucoLocker(Node):
         self.lookup_request = LookupTransform.Request()
         self.lookup_response = LookupTransform.Response()
 
-        self.sms_client = self.create_client(ManipulateScene, "manipulate_scene")
+        self.sms_client = self.create_client(
+            ManipulateScene, "manipulate_scene")
         self.sms_request = ManipulateScene.Request()
         self.sms_response = ManipulateScene.Response()
 
@@ -51,7 +56,7 @@ class ArucoLocker(Node):
             self.get_logger().info("sms service not available, waiting again...")
 
         self.get_logger().info(f"aruco_locker should be running")
-    
+
     def lock_markers(self):
         for id in range(0, 2):
             self.lock_a_marker(id)
@@ -68,13 +73,15 @@ class ArucoLocker(Node):
                 try:
                     self.lookup_response = self.lookup_future.result()
                 except Exception as e:
-                    self.get_logger().error(f"service call failed with: {(e,)}")
+                    self.get_logger().error(
+                        f"service call failed with: {(e,)}")
                 else:
-                    self.get_logger().info(f"lookup result: {self.lookup_response}")
+                    self.get_logger().info(
+                        f"lookup result: {self.lookup_response}")
                 finally:
                     self.get_logger().info(f"service call completed")
                 break
-        
+
         if self.lookup_response != None:
             if self.lookup_response.success:
                 self.sms_request.command = "update"
@@ -90,9 +97,11 @@ class ArucoLocker(Node):
                         try:
                             self.sms_response = self.sms_future.result()
                         except Exception as e:
-                            self.get_logger().error(f"service call failed with: {(e,)}")
+                            self.get_logger().error(
+                                f"service call failed with: {(e,)}")
                         else:
-                            self.get_logger().info(f"lookup result: {self.sms_response}")
+                            self.get_logger().info(
+                                f"lookup result: {self.sms_response}")
                         finally:
                             self.get_logger().info(f"service call completed")
                         break
